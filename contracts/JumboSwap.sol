@@ -126,11 +126,117 @@ contract JumboSwap is Ownable {
         emit PoolDecreased("MINUS", amountA, amountB, reserveA, reserveB);
     }
 
+    function swapAwithB(uint amountIn, uint amountOutMin) external isPaused {
+        require(amountIn > 0, "Amount must be greater than 0");
+
+        //adding 18 decimals to the input values:
+        uint amountInDecimalsAdded = amountIn * (10**18);
+        uint amountOutMinDecimalsAdded = amountOutMin * (10**18);
+
+        //swap amounts should not be as big as pool
+        require(amountInDecimalsAdded < reserveA/2, "swap amounts should not be as big as pool");
+
+        // we calculate the amountout. The balance of value between tokens
+        // is dynamic thanks to this calculation below. This is the core calculation of AMM model
+        uint amountOut = (amountInDecimalsAdded * reserveB) / reserveA;
+
+        //I am decreasing the amount from reserve before charging fee. 
+        //Because the fee will stay in the contract not in the reserves
+        reserveA += amountInDecimalsAdded;
+        reserveB -= amountOut;
+
+        //calculating fee on mathematical proportion
+        // we will charge %0.1 per tx on amountOut. 
+        uint txFee = (amountOut * feePercentage) / 1000;
+        //deducting fee from amountOut
+        amountOut -= txFee;
+
+        // amountOut must be greater than or equal to the minimum specified
+        // This line of code is for security of users against slippage and manipulation
+        require(amountOut >= amountOutMinDecimalsAdded, "actual output is smaller than the desired output");
+
+        // Transfer tokenIn from the sender to the contract
+        IERC20(tokenA).transferFrom(msg.sender, address(this), amountInDecimalsAdded);
+
+        // Transfer tokenOut from the contract to the sender
+        IERC20(tokenB).transfer(msg.sender, amountOut);
+
+        emit SwapHappened(tokenA, amountInDecimalsAdded, tokenB, amountOut, msg.sender);
+    }
+
+    function swapBwithA(uint amountIn, uint amountOutMin) external isPaused {
+        require(amountIn > 0, "Amount must be greater than 0");
+        
+        //adding 18 decimals to the input values:
+        uint amountInDecimalsAdded = amountIn * (10**18);
+        uint amountOutMinDecimalsAdded = amountOutMin * (10**18);
+
+        require(amountInDecimalsAdded < reserveB/2, "swap amounts should not be as big as pool");
+
+        //we calculate the amountOut as above.
+        uint amountOut = (amountInDecimalsAdded * reserveA) / reserveB;
+
+        //I am decreasing the amount from reserve before charging fee. 
+        //Because the fee will stay in the contract not in the reserves
+        reserveB += amountInDecimalsAdded;
+        reserveA -= amountOut;
+
+        //calculating fee as above
+        uint txFee = (amountOut * feePercentage) / 1000;
+        //deducting fee from amountOut
+        amountOut -= txFee;
+
+        //amountOut is specified as above function
+        require(amountOut >= amountOutMinDecimalsAdded, "actual output is smaller than the desired output");
+
+        //Transfer tokenIn from sender to the contract
+        IERC20(tokenB).transferFrom(msg.sender, address(this), amountInDecimalsAdded);
+
+        //Transfer tokenOut from contract to the sender
+        IERC20(tokenA).transfer(msg.sender, amountOut);
+
+        emit SwapHappened(tokenB, amountInDecimalsAdded, tokenA, amountOut, msg.sender);
+    }
+
+    //As this an test AMM project working with two tokens, we dont need to use parameter area to assign
+    //any dynamic token address 
+    function withdrawLeftoverTokens() external isPaused onlyOwner {
+
+        //calculating the general amounts (reserve + leftover)
+        uint amountTokenA = IERC20(tokenA).balanceOf(address(this));
+        uint amountTokenB = IERC20(tokenB).balanceOf(address(this));
+
+        //calculating leftovers 
+        uint leftoverTokenA = amountTokenA - reserveA;
+        uint leftoverTokenB = amountTokenB - reserveB;
+
+        //leftovers must be above 1 token to make tx meaningful
+        require(leftoverTokenA >= 1*(10**18) || leftoverTokenB >= 1*(10**18), "leftover token must be bigger than 1");
+
+        //Transfer leftovers from contract to the sender
+        IERC20(tokenA).transfer(msg.sender, leftoverTokenA);
+        IERC20(tokenB).transfer(msg.sender, leftoverTokenB);
+    }
 
     //This view function will be used by Frontend. It will show reserve status without decimals
     function getReserves() external view returns(uint, uint) {
         uint reserveAnew = reserveA / (10**18);
         uint reserveBnew = reserveB / (10**18);
         return (reserveAnew, reserveBnew);
+    }
+
+    //return amounts are divided by 18 decimals to make results look nice on frontend
+    function getContactBalance() external view returns(uint, uint) {
+        uint amountTokenA = IERC20(tokenA).balanceOf(address(this)) / (10**18);
+        uint amountTokenB = IERC20(tokenB).balanceOf(address(this)) / (10**18);
+        return (amountTokenA, amountTokenB);
+    }
+    function getTokenABalance() external view returns(uint) {
+        uint amountTokenA = IERC20(tokenA).balanceOf(address(this));
+        return amountTokenA;
+    }
+    function getTokenBBalance() external view returns(uint) {
+        uint amountTokenB = IERC20(tokenB).balanceOf(address(this));
+        return amountTokenB;
     }
 }
