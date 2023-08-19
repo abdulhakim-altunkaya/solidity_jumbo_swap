@@ -4,41 +4,41 @@ pragma solidity ^0.8.9;
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
-/**
- * @title JumboSwap - An Automated Market Maker for TokenA and TokenB
- * @author Abdulhakim Altunkaya
- * @notice This contract manages a liquidity pool and supports token swaps.
- * @dev This contract is prepared for the Patika Hackathon, August 2023.
- */
+    //JumboSwap is an Automated Market Maker. It manages
+    //a pool of TokenA and TokenB. The project is prepared for Patika Hackathon.
+    //by Abdulhakim Altunkaya, August 2023
+
 contract JumboSwap is Ownable {
 
-    // Events to log important contract activities
+    //events
     event SwapHappened(address tokenIn, uint amountIn, address tokenOut, uint amountOut, address client);
     event PoolIncreased(string message, uint amountA, uint amountB, uint reserveA, uint reserveB);
     event PoolDecreased(string message, uint amountA, uint amountB, uint reserveA, uint reserveB);
     event FeeUpdated(uint newFee);
 
-    // Main state variables: Token addresses and reserves
+    //Main state variables: Token addresses and reserves
     address public tokenA;
     address public tokenB;
     address public contractAddress;
     uint public reserveA;
     uint public reserveB;
 
-    // SECURITY CHECK 1: Emergency pause mechanism, onlyOwner can call
+    //SECURITY CHECK 1: pausing functions in case of emergencies, onlyOwner can call
     bool internal pauseStatus = false;
     function pauseEverything() external onlyOwner {
         pauseStatus = !pauseStatus;
     }
     error Paused(string message, address caller);
     modifier isPaused() {
-        if (pauseStatus == true) {
+        if(pauseStatus == true) {
             revert Paused("Contract is paused for security concerns, contact owner", owner());
         }
         _;
     }
 
-    // SECURITY CHECK 2: Ensure valid ERC20 token addresses before setting
+    //SECURITY CHECK 2: Before setting addresses for our token contract variables, we
+    //need to check if the addresses belong to ERC20 tokens. They need to return a number
+    //if we call totalSupply() erc20 method on them.
     function isERC20Token(address _tokenAddress) internal view returns(bool) {
         try IERC20(_tokenAddress).totalSupply() returns(uint) {
             return true;
@@ -47,12 +47,8 @@ contract JumboSwap is Ownable {
         }
     }
 
-    /**
-     * @notice Set token addresses for TokenA and TokenB
-     * @dev Only the contract owner can set the token addresses
-     * @param _tokenA Address of TokenA
-     * @param _tokenB Address of TokenB
-     */
+    //Token contract variables are assigned to their contract addresses here. Owner of the project
+    //will handle this funciton on the frontend.
     function setTokenAddresses(address _tokenA, address _tokenB) external onlyOwner {
         require(isERC20Token(_tokenA) == true, "not valid tokenA address");
         require(isERC20Token(_tokenB) == true, "not valid tokenB address");
@@ -63,31 +59,21 @@ contract JumboSwap is Ownable {
 
     // Fee structure. Further calculation will be handled inside swap functions.
     uint public feePercentage = 1; // Fee percentage (default 1 means 0.1% fee)
-    /**
-     * @notice Update the transaction fee percentage
-     * @dev Only the contract owner can update the fee percentage
-     * @param _fee New fee percentage to be set
-     */
     function updateFeePercentage(uint _fee) external isPaused onlyOwner {
         require(_fee < 30, "fee cannot be bigger than %3");
         feePercentage = _fee;
         emit FeeUpdated(feePercentage);
     } 
 
-    /**
-     * @notice Add liquidity to the contract's pool
-     * @dev Anyone can add liquidity, but the contract must be unpaused
-     * @param _amountA Amount of TokenA to be added
-     * @param _amountB Amount of TokenB to be added
-     */
+    //anybody can tokenA and tokenB liquidity to the contract.
     function addLiquidity(uint _amountA, uint _amountB) external isPaused {
         require(_amountA > 0 && _amountB > 0, "amounts of tokenA and tokenB must be greater than 0");
 
-        // Convert amounts to match token decimals
+        //adding decimals
         uint amountA = _amountA * (10**18);
         uint amountB = _amountB * (10**18);
       
-        // Transfer tokens from sender to the contract (pool)
+        //transfer tokens from sender to the contract(pool)
         IERC20(tokenA).transferFrom(owner(), contractAddress, amountA);
         IERC20(tokenB).transferFrom(owner(), contractAddress, amountB);
 
@@ -97,198 +83,160 @@ contract JumboSwap is Ownable {
         emit PoolIncreased("PLUS", amountA, amountB, reserveA, reserveB);
     }
 
-    /**
-     * @notice Remove liquidity of TokenA from the contract's pool
-     * @dev Only the contract owner can remove liquidity in a proportional way
-     * @param _amountA Amount of TokenA to be removed
-     */
-    function removeLiquidityTokenA(uint _amountA) external isPaused onlyOwner {
+    //onlyOwner can remove liquidty from contract. This will be done in a proportional way.
+    //that's why there are two different removeliquidity functions
+   function removeLiquidityTokenA(uint _amountA) external isPaused onlyOwner {
         require(_amountA > 0, "removal amount must be bigger than 0");
 
-        // Convert amount to match token decimals
+        //adding decimals
         uint amountA = _amountA * (10**18);
 
-        // Calculate the proportional amount of TokenB to maintain balance
+        //we need to withdraw a proportional amount from tokenB also to keep the balance of the pool
+        //To do so, we use a basic mathematical proportion.
         uint amountB = (amountA * reserveB) / reserveA;
 
-        // Update reserves
+        //decrease the reserves
         reserveA -= amountA;
         reserveB -= amountB;
 
-        // Transfer tokens back to the owner
+        //transfer tokens back to msg.sender who is owner
         IERC20(tokenA).transfer(msg.sender, amountA);
         IERC20(tokenB).transfer(msg.sender, amountB);
 
         emit PoolDecreased("MINUS", amountA, amountB, reserveA, reserveB);
     }
 
-    /**
-     * @notice Remove liquidity of TokenB from the contract's pool
-     * @dev Only the contract owner can remove liquidity in a proportional way
-     * @param _amountB Amount of TokenB to be removed
-     */
     function removeLiquidityTokenB(uint _amountB) external isPaused onlyOwner {
         require(_amountB > 0, "removal amount must be bigger than 0");
 
-        // Convert amount to match token decimals
+        //adding 18 decimals
         uint amountB = _amountB * (10**18);
 
-        // Calculate the proportional amount of TokenA to maintain balance
+        //calculate corresponding amount as above
         uint amountA = (amountB * reserveA) / reserveB;
 
-        // Update reserves
+        //decrease the reserves
         reserveA -= amountA;
         reserveB -= amountB;
 
-        // Transfer tokens back to the owner
+        //transfer tokens to the msg.sender
         IERC20(tokenA).transfer(msg.sender, amountA);
         IERC20(tokenB).transfer(msg.sender, amountB);
 
         emit PoolDecreased("MINUS", amountA, amountB, reserveA, reserveB);
     }
 
-    /**
-     * @notice Swap TokenA for TokenB
-     * @dev Users can swap TokenA for TokenB, charging a fee based on feePercentage
-     * @param amountIn Amount of TokenA to be swapped
-     * @param amountOutMin Minimum amount of TokenB expected from the swap
-     */
     function swapAwithB(uint amountIn, uint amountOutMin) external isPaused {
         require(amountIn > 0, "Amount must be greater than 0");
 
-        // Convert input amounts to match token decimals
+        //adding 18 decimals to the input values:
         uint amountInDecimalsAdded = amountIn * (10**18);
         uint amountOutMinDecimalsAdded = amountOutMin * (10**18);
 
-        // Ensure swap amounts are reasonable compared to pool size
-        require(amountInDecimalsAdded < reserveA / 2, "swap amounts should not be as big as pool");
+        //swap amounts should not be as big as pool
+        require(amountInDecimalsAdded < reserveA/2, "swap amounts should not be as big as pool");
 
-        // Calculate the amount of TokenB to receive based on pool ratio
+        // we calculate the amountout. The balance of value between tokens
+        // is dynamic thanks to this calculation below. This is the core calculation of AMM model
         uint amountOut = (amountInDecimalsAdded * reserveB) / reserveA;
 
-        // Update reserves before calculating fee
+        //I am decreasing the amount from reserve before charging fee. 
+        //Because the fee will stay in the contract not in the reserves
         reserveA += amountInDecimalsAdded;
         reserveB -= amountOut;
 
-        // Calculate fee based on mathematical proportion
+        //calculating fee on mathematical proportion
+        // we will charge %0.1 per tx on amountOut. 
         uint txFee = (amountOut * feePercentage) / 1000;
-        // Deduct fee from amountOut
+        //deducting fee from amountOut
         amountOut -= txFee;
 
-        // Ensure the output amount meets the minimum required
+        // amountOut must be greater than or equal to the minimum specified
+        // This line of code is for security of users against slippage and manipulation
         require(amountOut >= amountOutMinDecimalsAdded, "actual output is smaller than the desired output");
 
-        // Transfer TokenA from the sender to the contract
+        // Transfer tokenIn from the sender to the contract
         IERC20(tokenA).transferFrom(msg.sender, address(this), amountInDecimalsAdded);
 
-        // Transfer TokenB from the contract to the sender
+        // Transfer tokenOut from the contract to the sender
         IERC20(tokenB).transfer(msg.sender, amountOut);
 
         emit SwapHappened(tokenA, amountInDecimalsAdded, tokenB, amountOut, msg.sender);
     }
 
-    /**
-     * @notice Swap TokenB for TokenA
-     * @dev Users can swap TokenB for TokenA, charging a fee based on feePercentage
-     * @param amountIn Amount of TokenB to be swapped
-     * @param amountOutMin Minimum amount of TokenA expected from the swap
-     */
     function swapBwithA(uint amountIn, uint amountOutMin) external isPaused {
         require(amountIn > 0, "Amount must be greater than 0");
-
-        // Convert input amounts to match token decimals
+        
+        //adding 18 decimals to the input values:
         uint amountInDecimalsAdded = amountIn * (10**18);
         uint amountOutMinDecimalsAdded = amountOutMin * (10**18);
 
-        // Ensure swap amounts are reasonable compared to pool size
-        require(amountInDecimalsAdded < reserveB / 2, "swap amounts should not be as big as pool");
+        require(amountInDecimalsAdded < reserveB/2, "swap amounts should not be as big as pool");
 
-        // Calculate the amount of TokenA to receive based on pool ratio
+        //we calculate the amountOut as above.
         uint amountOut = (amountInDecimalsAdded * reserveA) / reserveB;
 
-        // Update reserves before calculating fee
+        //I am decreasing the amount from reserve before charging fee. 
+        //Because the fee will stay in the contract not in the reserves
         reserveB += amountInDecimalsAdded;
         reserveA -= amountOut;
 
-        // Calculate fee based on mathematical proportion
+        //calculating fee as above
         uint txFee = (amountOut * feePercentage) / 1000;
-        // Deduct fee from amountOut
+        //deducting fee from amountOut
         amountOut -= txFee;
 
-        // Ensure the output amount meets the minimum required
+        //amountOut is specified as above function
         require(amountOut >= amountOutMinDecimalsAdded, "actual output is smaller than the desired output");
 
-        // Transfer TokenB from the sender to the contract
+        //Transfer tokenIn from sender to the contract
         IERC20(tokenB).transferFrom(msg.sender, address(this), amountInDecimalsAdded);
 
-        // Transfer TokenA from the contract to the sender
+        //Transfer tokenOut from contract to the sender
         IERC20(tokenA).transfer(msg.sender, amountOut);
 
         emit SwapHappened(tokenB, amountInDecimalsAdded, tokenA, amountOut, msg.sender);
     }
 
-    /**
-     * @notice Withdraw leftover tokens from the contract
-     * @dev Only the contract owner can withdraw tokens not part of the liquidity pool
-     */
+    //As this an test AMM project working with two tokens, we dont need to use parameter area to assign
+    //any dynamic token address 
     function withdrawLeftoverTokens() external isPaused onlyOwner {
-        // Calculate the contract's token balances
+
+        //calculating the general amounts (reserve + leftover)
         uint amountTokenA = IERC20(tokenA).balanceOf(address(this));
         uint amountTokenB = IERC20(tokenB).balanceOf(address(this));
 
-        // Calculate leftover tokens
+        //calculating leftovers 
         uint leftoverTokenA = amountTokenA - reserveA;
         uint leftoverTokenB = amountTokenB - reserveB;
 
-        // Ensure leftovers are above 1 token
-        require(leftoverTokenA >= 1 * (10**18) || leftoverTokenB >= 1 * (10**18), "leftover token must be bigger than 1");
+        //leftovers must be above 1 token to make tx meaningful
+        require(leftoverTokenA >= 1*(10**18) || leftoverTokenB >= 1*(10**18), "leftover token must be bigger than 1");
 
-        // Transfer leftovers from the contract to the owner
+        //Transfer leftovers from contract to the sender
         IERC20(tokenA).transfer(msg.sender, leftoverTokenA);
         IERC20(tokenB).transfer(msg.sender, leftoverTokenB);
     }
 
-    /**
-     * @notice Get the reserves of TokenA and TokenB in the contract
-     * @dev This function is used by the frontend to display reserve status without decimals
-     * @return Reserve amounts of TokenA and TokenB
-     */
+    //This view function will be used by Frontend. It will show reserve status without decimals
     function getReserves() external view returns(uint, uint) {
         uint reserveAnew = reserveA / (10**18);
         uint reserveBnew = reserveB / (10**18);
         return (reserveAnew, reserveBnew);
     }
 
-    /**
-     * @notice Get the current balance of TokenA and TokenB in the contract
-     * @dev This function is used by the frontend to display contract balances without decimals
-     * @return Balance amounts of TokenA and TokenB
-     */
+    //return amounts are divided by 18 decimals to make results look nice on frontend
     function getContactBalance() external view returns(uint, uint) {
         uint amountTokenA = IERC20(tokenA).balanceOf(address(this)) / (10**18);
         uint amountTokenB = IERC20(tokenB).balanceOf(address(this)) / (10**18);
         return (amountTokenA, amountTokenB);
     }
-
-    /**
-     * @notice Get the balance of TokenA in the contract
-     * @dev This function is used by the frontend to display the balance of TokenA in the contract
-     * @return Balance amount of TokenA in the contract
-     */
     function getTokenABalance() external view returns(uint) {
         uint amountTokenA = IERC20(tokenA).balanceOf(address(this));
         return amountTokenA;
     }
-
-    /**
-     * @notice Get the balance of TokenB in the contract
-     * @dev This function is used by the frontend to display the balance of TokenB in the contract
-     * @return Balance amount of TokenB in the contract
-     */
     function getTokenBBalance() external view returns(uint) {
         uint amountTokenB = IERC20(tokenB).balanceOf(address(this));
         return amountTokenB;
     }
-
-
 }
