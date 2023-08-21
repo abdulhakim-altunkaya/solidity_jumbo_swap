@@ -18,12 +18,21 @@ contract JumboSwap is Ownable {
     event PoolDecreased(string message, uint amountA, uint amountB, uint reserveA, uint reserveB);
     event FeeUpdated(uint newFee);
 
-    // Main state variables: Token addresses and reserves
+    // ---- STATE VARIABLES ----
+    //Token addresses and reserves
     address public tokenA;
     address public tokenB;
     address public contractAddress;
     uint public reserveA;
     uint public reserveB;
+    //liquidity provision variables
+    struct LPdetails {
+        bool status;
+        uint amountADeposit;
+        uint amountBDeposit;
+
+    }
+    mapping[address => LPdetails] public liquidityProviders;
 
     // SECURITY CHECK 1: Emergency pause mechanism, onlyOwner can call
     bool internal pauseStatus = false;
@@ -93,6 +102,11 @@ contract JumboSwap is Ownable {
 
         reserveA += amountA;
         reserveB += amountB;
+
+        //liquidityProviders mapping updates
+        liquidityProviders[msg.sender].amountADeposit += amountA;
+        liquidityProviders[msg.sender].amountBDeposit += amountB;
+        liquidityProviders[msg.sender].status = true;
 
         emit PoolIncreased("PLUS", amountA, amountB, reserveA, reserveB);
     }
