@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.9;
+pragma solidity >= 0.8.7;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
@@ -32,7 +32,7 @@ contract JumboSwap is Ownable {
         uint amountBDeposit;
 
     }
-    mapping[address => LPdetails] public liquidityProviders;
+    mapping(address => LPdetails) public liquidityProviders;
 
     // SECURITY CHECK 1: Emergency pause mechanism, onlyOwner can call
     bool internal pauseStatus = false;
@@ -255,7 +255,7 @@ contract JumboSwap is Ownable {
         uint leftoverTokenB = amountTokenB - reserveB;
 
         // Ensure leftovers are above 1 token
-        require(leftoverTokenA >= 1 * (10**18) || leftoverTokenB >= 1 * (10**18), "leftover token must be bigger than 1");
+        require(leftoverTokenA >= 0 || leftoverTokenB >= 0, "leftover token must be bigger than 0");
 
         // Transfer leftovers from the contract to the owner
         IERC20(tokenA).transfer(msg.sender, leftoverTokenA);

@@ -1,1 +1,2 @@
 Optional: allowance check in Swap functions
+add liquidity is open to public but withdrawal is open to onlyOwner. Update this.

@@ -19,7 +19,7 @@ contract TokenB is Ownable, ERC20Capped {
 
     //minting function for owner, decimals handled
     function mintToken(uint _amount) external onlyOwner {
-        require(_amount > 0 && _amount < 10000, "mint between 0 and 10000");
+        require(_amount > 0 && _amount < 100000, "mint between 0 and 100000");
         _mint(msg.sender, _amount*(10**18));
         emit TokenMinted(msg.sender, _amount);
     }
