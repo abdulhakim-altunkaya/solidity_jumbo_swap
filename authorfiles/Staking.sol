@@ -105,13 +105,13 @@ contract TokenAStaking is Ownable {
     }
     //Main mapping. A person can stake many times. Each stake will have record. And each stake
     //will be saved inside StakeDetails array.
-    mapping(address => StakeDetailsArray[]) public StakeDetailsMapping;
+    mapping(address => StakeDetails[]) public StakeDetailsMapping;
     //keeping track of how much staked. Will be used for control checks.
     mapping(address => uint) public stakers;
     //Keeping track total staked amount in the system.
     uint public totalStaked;
     //tokenA address to be assigned by constructor
-    address public tokenA;
+    IERC20 public tokenA;
 
     // --- MODIFIERS ---
     error NotStaker(address caller, string message);
@@ -132,7 +132,7 @@ contract TokenAStaking is Ownable {
 
     // SUPPORT FUNCTION 2: constructor assigning token address
     constructor(address _tokenA) {
-        tokenA = _tokenA;
+        tokenA = IERC20(_tokenA);
     }
 
     // SUPPORT FUNCTION 3: calculate stake reward
@@ -160,7 +160,9 @@ contract TokenAStaking is Ownable {
         uint stakeAmount = StakeDetailsMapping[msg.sender][_index].amount;
         uint stakeTime = StakeDetailsMapping[msg.sender][_index].startTime;
         
+        require(stakeAmount > 0, "stake amount must be bigger than 0");
         require(block.timestamp >= stakeTime + 2 days, "min staking period is 2 days");
+
         uint reward = calculateYield(stakeAmount, stakeTime);
         //staking reset, rewards reset
         StakeDetailsMapping[msg.sender][_index].startTime = block.timestamp;
@@ -168,6 +170,32 @@ contract TokenAStaking is Ownable {
 
         emit RewardClaimed(msg.sender, _index, reward);
     }
+
+    //In case person would like to stake his reward, they can stake it here
+    function stakeReward(uint _index) external onlyStakers {
+
+        //fetching stake details for reward(yield) calculation
+        uint stakeAmount = StakeDetailsMapping[msg.sender][_index].amount;
+        uint stakeTime = StakeDetailsMapping[msg.sender][_index].startTime;
+        require(stakeAmount > 0, "stake amount must be bigger than 0");
+        require(block.timestamp >= stakeTime + 2 days, "min staking period is 2 days");
+        uint reward = calculateYield(stakeAmount, stakeTime);
+
+        //staking reset, rewards reset
+        StakeDetailsMapping[msg.sender][_index].startTime = block.timestamp;
+        //total stake amount of msg.sender increases with every new stake
+        stakers[msg.sender] += reward;
+        //Total staked amount in the system increases
+        totalStaked += reward;
+
+        //Creating a new stake record
+        StakeDetails memory newStake = StakeDetails(reward, block.timestamp);
+        //pushing new stake record to the stake array of the msg.sender
+        StakeDetailsMapping[msg.sender].push(newStake);
+
+        emit RewardStaked(msg.sender, _index, reward);
+    }
+
 
     //Function lets everyone to stake anytime they want and as many times they want.
     //Each stake will be a new staking record.
@@ -190,62 +218,40 @@ contract TokenAStaking is Ownable {
         emit Staked(msg.sender, _amount);
     }
 
+    //users can unstake their stakes. In this unstaking amount + accummulated reward will be
+    //transferred to the msg.sender
+    function unstake(address _to, uint _index) external onlyStakers {
+        //input and general checks
+        require(_to != address(0), "Cannot claim from address 0");
+        require(msg.sender != address(0), "Cannot stake from address 0");
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    function stakeReward(uint _index, uint _period, uint _apy) external onlyStakers {
-        uint stakeTime = StakeDetailsMapping[msg.sender][_index].stakeDate;
-        require(block.timestamp >= stakeTime + 28 seconds,"wait 28 days to get your reward"); //COMMENT IN DEPLOYMENT
-        //require(block.timestamp >= stakeTime + 28 days,"wait 28 days to get your reward"); //UNCOMMENT IN DEPLOYMENT
-        uint reward = calculateReward(_index);
-        //resetting the block.timestamp to prevent exploitation
-        StakeDetailsMapping[msg.sender][_index].stakeDate = block.timestamp;
-
-        //creating a new stake from claimedReward
-        stake(reward, _period, _apy);
-
-        emit StakedReward(msg.sender, _index, reward);
-    }
-
-    uint public myUnstakingAmount;//COMMENT IN DEPLOYMENT
-    //User can then unstake the specific stake
-    function unstake(address payable _to, uint _index) external onlyStakers {
-        //1) To unstake, user must first claim the reward that is available (28 days condition).
-        uint stakeTime = StakeDetailsMapping[msg.sender][_index].stakeDate;
-        if(block.timestamp >= stakeTime + 28 seconds) { //DEPLOYMENT: 28 days
-            revert("claim your reward first, then unstake");
-        }
-
-        // 2) transferring the reward (see ASSUMPTION 2)
+        //fetching stake details and calculating reward(yield)
         uint stakeAmount = StakeDetailsMapping[msg.sender][_index].amount;
-        myUnstakingAmount = stakeAmount; //COMMENT IN DEPLOYMENT
-        // (bool success, ) = _to.call{value: stake}(""); // UNCOMMENT IN DEPLOYMENT
-        // require(success, "unstaking failed"); // UNCOMMENT IN DEPLOYMENT
+        uint stakeTime = StakeDetailsMapping[msg.sender][_index].startTime;
+        require(stakeAmount > 0, "stake amount must be bigger than 0");
+        require(block.timestamp >= stakeTime + 2 days, "min staking period is 2 days");
+        uint reward = calculateYield(stakeAmount, stakeTime);
 
-        // 3) delete the specific stake from stakes array of the user
-        uint stakesArray = StakeDetailsMapping[msg.sender].length;
-        for(uint i=0; i<stakesArray-1; i++) {
-            StakeDetailsMapping[msg.sender][_index] = StakeDetailsMapping[msg.sender][_index+1];
-        }
-        StakeDetailsMapping[msg.sender].pop();
+        uint totalAmount = stakeAmount + reward;
 
-        //NOTE: I can reconfigure step 3 and 2 to prevent reentrancy attacks. For easy reading & testing, I left it like this.
+        //staking reset, rewards reset
+        StakeDetailsMapping[msg.sender][_index].amount = 0;
+        StakeDetailsMapping[msg.sender][_index].startTime = block.timestamp;
 
-        emit Unstaked(msg.sender, _index);
+        tokenA.transfer(_to, totalAmount);
+
+        emit Unstaked(_to, _index);
     }
+
+
+
+
+
+
+
+
+
+
 
     function decreaseStake(address payable _to, uint _index, uint _amount) external {
         //1) To decrease stake, user must first claim the reward that is available (28 days condition).
